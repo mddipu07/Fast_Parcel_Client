@@ -1,10 +1,11 @@
 import { CardElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import { useQuery } from '@tanstack/react-query';
 import React, { useState } from 'react';
-import { useParams } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import useAxiosSecure from '../../../Hooks/useAxiosSecure';
 import useAuth from '../../../Hooks/useAuth';
-
+import Swal from 'sweetalert2'
+import useTrackingLogger from '../../../Hooks/useTrackingLoger';
 
 
 const PaymentForm = () => {
@@ -13,6 +14,8 @@ const PaymentForm = () => {
     const {parcelId} = useParams()
     const axiosSecure = useAxiosSecure()
     const {user} =useAuth()
+    const { logTracking } = useTrackingLogger()
+    const navigate = useNavigate()
     console.log(parcelId);
  
     const [error , setError] = useState('');
@@ -74,7 +77,32 @@ const PaymentForm = () => {
       setError('')
       if(result.paymentIntent.status === 'succeeded'){
          console.log('Payment Succeeded');
-         console.log(result);
+        
+         const transactionId = result.paymentIntent.id
+
+         const paymentData = {
+            parcelId,
+            email: user.email,
+            amount,
+            transactionId:transactionId,
+            paymentMethod:result.paymentIntent.payment_method_types
+
+         }
+         const paymentRes = await axiosSecure.post('/payments',paymentData);
+         if(paymentRes.data.insertedId){
+             await Swal.fire({
+               icon:'success',
+               title:'Payment succesfull',
+               html:`<strong>Transaction ID:</strong> <code>${transactionId}</code>`,
+             });
+             await logTracking({
+               tracking_id:parcelInfo.tracking_id,
+               status:"Payment_done",
+               details:`paid by ${user.displayName}`,
+               updated_by:user.email,
+             })
+             navigate('/dashedboard/myParcels');
+         }
       }
     }
    }

@@ -1,8 +1,10 @@
 import { useForm } from "react-hook-form";
 import Swal from 'sweetalert2';
-import { useLoaderData } from "react-router";
+import { useLoaderData, useNavigate } from "react-router";
 import useAxiosSecure from "../../Hooks/useAxiosSecure";
-import useAuth from "../../hooks/useAuth";
+import useAuth from "../../Hooks/useAuth";
+import useTrackingLogger from "../../Hooks/useTrackingLoger";
+
 ;
 
 const generateTrackingID = () => {
@@ -21,13 +23,14 @@ const SendParcel = () => {
     } = useForm();
     const {user} = useAuth()
     const axiosSecure = useAxiosSecure()
-
-    const serviceCenters = useLoaderData();
+    const navigate = useNavigate()
+    const {logTracking} = useTrackingLogger()
+    const warehouseData = useLoaderData();
     // Extract unique regions
-    const uniqueRegions = [...new Set(serviceCenters.map((w) => w.region))];
+    const uniqueRegions = [...new Set(warehouseData.map((w) => w.region))];
     // Get districts by region
     const getDistrictsByRegion = (region) =>
-        serviceCenters.filter((w) => w.region === region).map((w) => w.district);
+        warehouseData.filter((w) => w.region === region).map((w) => w.district);
 
     const parcelType = watch("type");
     const senderRegion = watch("sender_region");
@@ -91,6 +94,7 @@ const SendParcel = () => {
             },
         }).then((result) => {
             if (result.isConfirmed) {
+                const tracking_id = generateTrackingID()
                 const parcelData = {
                     ...data,
                     cost: totalCost,
@@ -98,7 +102,7 @@ const SendParcel = () => {
                     payment_status: 'unpaid',
                     delivery_status: 'not_collected',
                     creation_date: new Date().toISOString(),
-                    tracking_id: generateTrackingID(),
+                    tracking_id:tracking_id
                 };
 
                 console.log("Ready for payment:", parcelData);
@@ -108,9 +112,10 @@ const SendParcel = () => {
                 })
                 
                 axiosSecure.post('/parcels', parcelData)
-                    .then(res => {
+                    .then(async(res) => {
                         console.log(res.data);
                         if (res.data.insertedId) {
+
                             // TODO: redirect to a payment page 
                             Swal.fire({
                                 title: "Redirecting...",
@@ -119,6 +124,13 @@ const SendParcel = () => {
                                 timer: 1500,
                                 showConfirmButton: false,
                             });
+                            await logTracking({
+                                tracking_id:parcelData.tracking_id,
+                                status:"Parcel_created",
+                                details:`Picked up by ${user.displayName}`,
+                                updated_by:user.email,
+                            })
+                            navigate('/dashboard/myParcels')
                         }
                     })
                 
